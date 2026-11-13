@@ -166,7 +166,7 @@ def analyze(ticker):
     best = max(plans, key=lambda p: (p["score"], TFS.index(p["tf"])))
     return best, f"Sera timeframe {best['tf']}, score {best['score']}/8, RR 1:{best['rr']:.1f}"
 
-# ---------- Chart & message ----------
+# ---------- Charts & message ----------
 def make_chart(name, p, ticker):
     df = load(ticker, p["tf"]).tail(90)
     near = [l for l, _, _ in p["lv"] if abs(l - p["entry"]) < 6*p["atr"]][:4]
@@ -177,6 +177,21 @@ def make_chart(name, p, ticker):
              title=f"{name.upper()} {p['tf']} | {p['side']} | NY Session",
              savefig=dict(fname="chart.png", dpi=110))
     return "chart.png"
+
+def make_overview(name, ticker, note):
+    df = load(ticker, "1h").tail(90)
+    h4 = load(ticker, "4h")
+    price = float(df.Close.iloc[-1])
+    a = float(atr(df).iloc[-1])
+    lv = [l for l, t in sr_levels(h4) if t >= 3] + [l for l, t in sr_levels(df) if t >= 2]
+    near = sorted([l for l in lv if abs(l - price) < 8*a], key=lambda l: abs(l - price))[:6]
+    kw = {}
+    if near:
+        kw["hlines"] = dict(hlines=near, colors=["gray"]*len(near), linestyle="--", linewidths=1)
+    mpf.plot(df, type="candle", style="charles", figsize=(10, 6),
+             title=f"{name.upper()} 1H | Overview | NY Session",
+             savefig=dict(fname="overview.png", dpi=110), **kw)
+    return "overview.png"
 
 def message(name, p, st, now):
     w, l = st["wins"], st["losses"]
@@ -255,11 +270,18 @@ def main():
         p, note = analyze(st["ticker"])
         st["last"] = now.isoformat()
         if p and p["score"] >= MIN_SCORE and p["rr"] >= MIN_RR:
-            send_photo(make_chart(st["name"], p, st["ticker"]))
+            try:
+                send_photo(make_chart(st["name"], p, st["ticker"]))
+            except Exception as e:
+                print("chart error:", e)
             send(message(st["name"], p, st, now))
             st["trades"].append({"name": st["name"], "ticker": st["ticker"], "side": p["side"],
                                  "entry": p["entry"], "sl": p["sl"], "tp": p["tp"], "time": now.isoformat()})
         elif manual:
+            try:
+                send_photo(make_overview(st["name"], st["ticker"], note))
+            except Exception as e:
+                print("chart error:", e)
             send(f"ℹ️ {st['name'].upper()}: ekhon A+ setup nei.\n{note}\n🕗 {now.strftime('%I:%M %p')} ET")
     elif force and not manual:
         send("🕗 New York session sesh. Porer session e notun setup pathabo.")

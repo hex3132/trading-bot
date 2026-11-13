@@ -1,1 +1,10 @@
-{"offset":0,"name":"gold","ticker":"GC=F","trades":[],"last":null,"paused":false,"wins":0,"losses":0}
+{
+ "offset": 259026282,
+ "name": "gold",
+ "ticker": "GC=F",
+ "trades": [],
+ "last": "2026-11-13T17:52:23.953970-05:00",
+ "paused": false,
+ "wins": 0,
+ "losses": 0
+}

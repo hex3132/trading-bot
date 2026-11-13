@@ -25,6 +25,33 @@ def send_photo(path):
     with open(path, "rb") as f:
         requests.post(f"{API}/sendPhoto", data={"chat_id": CHAT}, files={"photo": f})
 
+MENU = [("🥇 Gold", "gold"), ("🥈 Silver", "silver"), ("🛢 Oil", "oil"),
+        ("₿ BTC", "btc"), ("Ξ ETH", "eth"), ("SOL", "sol"), ("BNB", "bnb"),
+        ("EUR/USD", "eurusd"), ("GBP/USD", "gbpusd"), ("USD/JPY", "usdjpy")]
+
+HELP = ("🤖 Kon command ki kore:\n\n"
+        "/list - coin/pair er button list\n"
+        "/coin btc - sorasori btc analysis (je kono nam)\n"
+        "/now - ekhoni analysis\n"
+        "/status - ekhon kon symbol, khola trade, win/loss\n"
+        "/stop - auto signal bondho\n"
+        "/start - auto signal chalu\n"
+        "/help - ei list\n\n"
+        "🕗 Auto signal shudhu New York session e (Mon-Fri, 08:00-17:00 ET)")
+
+def send_menu():
+    rows = [MENU[i:i+3] for i in range(0, len(MENU), 3)]
+    kb = {"inline_keyboard": [[{"text": t, "callback_data": "coin:" + k} for t, k in row] for row in rows]}
+    requests.post(f"{API}/sendMessage", data={
+        "chat_id": CHAT, "text": "📋 Kon symbol analysis korbo? Button e chap din (onno nam lagle: /coin xrp)",
+        "reply_markup": json.dumps(kb)})
+
+def set_commands():
+    cmds = [("list", "Coin/pair er list"), ("now", "Ekhoni analysis"), ("status", "Status dekhun"),
+            ("stop", "Auto signal bondho"), ("start", "Auto signal chalu"), ("help", "Command list")]
+    requests.post(f"{API}/setMyCommands",
+                  json={"commands": [{"command": c, "description": d} for c, d in cmds]})
+
 # ---------- Data & indicators ----------
 def load(sym, tf):
     iv, per = SRC[tf]
@@ -229,22 +256,41 @@ def main():
     st = json.load(open("state.json"))
     now = datetime.now(NY)
     force = manual = False
+    set_commands()
 
     r = requests.get(f"{API}/getUpdates", params={"offset": st["offset"], "timeout": 0}).json()
     for u in r.get("result", []):
         st["offset"] = u["update_id"] + 1
-        m = u.get("message") or {}
-        if str(m.get("chat", {}).get("id")) != CHAT: continue
-        t = m.get("text", "").strip().lower().split()
-        if not t: continue
+        cq = u.get("callback_query")
+        if cq:                                   # button tap
+            requests.post(f"{API}/answerCallbackQuery", data={"callback_query_id": cq["id"]})
+            if str(cq["from"]["id"]) != CHAT: continue
+            data = cq.get("data", "")
+            if not data.startswith("coin:"): continue
+            t = ["/coin", data[5:]]
+        else:                                    # typed message
+            m = u.get("message") or {}
+            if str(m.get("chat", {}).get("id")) != CHAT: continue
+            t = m.get("text", "").strip().lower().split()
+            if not t: continue
         cmd = t[0].split("@")[0]
-        if cmd in ("/coin", "/pair", "/symbol") and len(t) > 1:
-            tk = resolve(t[1])
-            if tk: st["name"], st["ticker"] = t[1], tk; force = manual = True; send(f"✅ Symbol: {t[1].upper()}")
-            else: send(f"❌ '{t[1]}' pawa jayni")
+
+        if cmd in ("/coin", "/pair", "/symbol"):
+            if len(t) < 2:
+                send_menu()
+            else:
+                tk = resolve(t[1])
+                if tk:
+                    st["name"], st["ticker"] = t[1], tk
+                    force = manual = True
+                    send(f"✅ Symbol: {t[1].upper()}")
+                else:
+                    send(f"❌ '{t[1]}' pawa jayni. /list dekhun")
+        elif cmd in ("/list", "/menu"): send_menu()
+        elif cmd == "/help": send(HELP)
         elif cmd == "/now": force = manual = True
         elif cmd == "/stop": st["paused"] = True; send("⏸ Auto signal bondho")
-        elif cmd == "/start": st["paused"] = False; send("▶️ Auto signal chalu (New York session)")
+        elif cmd == "/start": st["paused"] = False; send("▶️ Auto signal chalu (New York session)\n\n" + HELP)
         elif cmd == "/status":
             send(f"Symbol: {st['name'].upper()}\nKhola trade: {len(st['trades'])}\n"
                  f"Record: {st['wins']}W / {st['losses']}L\nPaused: {st['paused']}\n"
